@@ -1,44 +1,47 @@
 import time, httplib, urllib, serial, time, wx
 from threading import *
 
+
+
+
 # Button definitions
 ID_START = wx.NewId()
 ID_STOP = wx.NewId()
 
 def checkSitting(ser,MAX_DISTANCE):
 
-	listen=True
-	while listen:
+    listen=True
+    while listen:
 
-		read_val= ser.readline()
-		if(read_val):
+        read_val= ser.readline()
+        if(read_val):
 
-			read_val = read_val.strip()
-			val_list = read_val.split()
-			distance = val_list[1].strip('cm')
-			print distance
-			listen = False
+            read_val = read_val.strip()
+            val_list = read_val.split()
+            distance = val_list[1].strip('cm')
+            print distance
+            listen = False
 
-			if int(distance) < MAX_DISTANCE:
-				return True
-			else:
-				return False
+            if int(distance) < MAX_DISTANCE:
+                return True
+            else:
+                return False
 
 
 
 def sendNotification(sittingTime):
 
-	sittingTimeStr = str(sittingTime/60)
+    sittingTimeStr = str(sittingTime/60)
 
-	conn = httplib.HTTPSConnection("api.pushover.net:443")
-	conn.request("POST", "/1/messages.json",
-	  urllib.urlencode({
-	    "token": "TOKEN",
-	    "user": "userString",
-	    "message": "You have been sitting for "+sittingTimeStr+" minutes. You should move around!",
-	    "title": "Sedentary",
-	  }), { "Content-type": "application/x-www-form-urlencoded" })
-	conn.getresponse()
+    conn = httplib.HTTPSConnection("api.pushover.net:443")
+    conn.request("POST", "/1/messages.json",
+      urllib.urlencode({
+        "token": "aSMvPprPX7v4aq1z3tDoiAnWmE6H7G",
+        "user": "Mgi64WImrWUncCaV5w3qfu6Os1Crb4",
+        "message": "You have been sitting for "+sittingTimeStr+" minutes. You should move around!",
+        "title": "Sedentary",
+      }), { "Content-type": "application/x-www-form-urlencoded" })
+    conn.getresponse()
 
 
 
@@ -85,12 +88,19 @@ class WorkerThread(Thread):
 
         ser = serial.Serial('/dev/tty.HC-06-DevB', 9600, timeout=1)
         ser.close()
-        ser.open()
 
-        MAX_SIT_TIME = int(self._notify_window.maxSitTime.GetValue()) 
-        WAIT_TIME = int(self._notify_window.waitTime.GetValue())
-        MIN_ACTIVE_TIME = int(self._notify_window.minActiveTime.GetValue())
-        MIN_NOTIFICATION_TIME = int(self._notify_window.minNotificationTime.GetValue())
+        serIsOpen = False
+        while not serIsOpen:
+            try:
+                ser.open()
+                serIsOpen=True
+            except:
+                serIsOpen=False
+
+        MAX_SIT_TIME = int(self._notify_window.maxSitTime.GetValue())*60
+        WAIT_TIME = int(self._notify_window.waitTime.GetValue())*60
+        MIN_ACTIVE_TIME = int(self._notify_window.minActiveTime.GetValue())*60
+        MIN_NOTIFICATION_TIME = int(self._notify_window.minNotificationTime.GetValue())*60
         MAX_DISTANCE = int(self._notify_window.maxDistance.GetValue())
 
         numberNotifications = 0
@@ -108,14 +118,25 @@ class WorkerThread(Thread):
         while(True):
 
           if self._want_abort:
+            totalActiveTime += activeTime
+            totalSitTime += sittingTime
+
+
+
             print "Sitting Time: ",totalSitTime
             print "Active Time", totalActiveTime 
+
+            sedFile = open("sedentary.txt","a")
+            todayDate = time.strftime("%m/%d/%Y")
+            outputStr = todayDate +"\t"+str(totalSitTime)+"\t"+str(totalActiveTime)+"\n"
+            sedFile.write(outputStr)
+            sedFile.close()
 
             wx.PostEvent(self._notify_window, ResultEvent(None))
             ser.close()
             return
 
-          start_time = time.time()	
+          start_time = time.time()  
 
           if(checkSitting(ser, MAX_DISTANCE)):
             sittingTime += WAIT_TIME
@@ -126,8 +147,8 @@ class WorkerThread(Thread):
             notifcationTime += WAIT_TIME
 
             if notifcationTime >= MIN_NOTIFICATION_TIME:
-	            sendNotification(sittingTime)
-	            notifcationTime = 0
+                sendNotification(sittingTime)
+                notifcationTime = 0
 
           if ((sittingTime)/(MAX_SIT_TIME*1.0)) >= (numberNotifications+1):
 
@@ -138,6 +159,7 @@ class WorkerThread(Thread):
           print "SittingTime: ",sittingTime
           print "MAX_SIT_TIME", MAX_SIT_TIME
           print "NumberNotifications",numberNotifications
+          time.sleep(WAIT_TIME)
 
           if activeTime >= MIN_ACTIVE_TIME:
             totalActiveTime += activeTime
