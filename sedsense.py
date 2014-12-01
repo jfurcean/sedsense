@@ -169,6 +169,7 @@ class WorkerThread(Thread):
             activeTime = 0
             numberNotifications = 0
             notifcationTime = 0
+            countNoteTime = False
 
         ser.close()
 
